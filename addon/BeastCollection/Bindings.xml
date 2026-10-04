@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="BEASTCOLLECTION_TOGGLE" header="BEASTCOLLECTION">
+		BeastCollection.Toggle()
+	</Binding>
+</Bindings>

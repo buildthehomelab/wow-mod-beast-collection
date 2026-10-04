@@ -1,0 +1,149 @@
+[worldserver]
+
+########################################
+# mod-beast-collection
+#
+# Hunter stables, Pokémon style: an unlimited box of tamed beasts you can call out anywhere,
+# an account-wide beast-dex of every tameable look, rare shiny spawns and dex milestone rewards.
+# The BeastCollection addon is the window (/beasts).
+########################################
+
+#
+#    BeastCollection.Enable
+#        Description: Master switch.
+#        Default:     1
+#
+
+BeastCollection.Enable = 1
+
+#
+#    BeastCollection.Box.Enable
+#        Description: The box: keep more beasts than the stable's four slots and call any of
+#                     them out anywhere, out of combat. Pets already in the box stay there while
+#                     it's off.
+#        Default:     1
+#
+
+BeastCollection.Box.Enable = 1
+
+#
+#    BeastCollection.Box.MaxPets
+#        Description: How many beasts the box holds per character, on top of the stable.
+#                     0 = no limit.
+#        Default:     0
+#
+
+BeastCollection.Box.MaxPets = 0
+
+#
+#    BeastCollection.Box.AutoStoreOnTame
+#        Description: Taming a beast with a pet already at your side sends that pet to the box
+#                     instead of failing with "You have too many pets". It only happens when the
+#                     tame would otherwise go through (level, exotic, range, line of sight).
+#        Default:     1
+#
+
+BeastCollection.Box.AutoStoreOnTame = 1
+
+#
+#    BeastCollection.Box.SwapCooldown
+#        Description: Seconds before another beast can be called from the collection.
+#        Default:     10
+#
+
+BeastCollection.Box.SwapCooldown = 10
+
+#
+#    BeastCollection.Box.SwapInInstances
+#        Description: Allow calling beasts from the collection inside dungeons and raids
+#                     (never in arenas, never in combat).
+#        Default:     1
+#
+
+BeastCollection.Box.SwapInInstances = 1
+
+#
+#    BeastCollection.Dex.ZoneHints
+#        Description: Work out at startup which zones each beast look lives in, from spawn
+#                     positions, so the dex can tell players where to look. Costs a few seconds
+#                     of startup.
+#        Default:     1
+#
+
+BeastCollection.Dex.ZoneHints = 1
+
+#
+#    BeastCollection.Dex.ZoneSamples
+#        Description: Spawns looked at per beast look for the zone hints.
+#        Default:     4
+#
+
+BeastCollection.Dex.ZoneSamples = 4
+
+#
+#    BeastCollection.Shiny.Enable
+#        Description: Tameable beasts sometimes spawn in a rare alternate skin of their model
+#                     (another creature's colouring) and sparkle. Tamed, the pet keeps the skin.
+#        Default:     1
+#
+
+BeastCollection.Shiny.Enable = 1
+
+#
+#    BeastCollection.Shiny.Chance
+#        Description: Percent chance for a tameable beast to spawn shiny, rolled on every spawn
+#                     and respawn. Beasts without an alternate skin never do.
+#        Default:     1.0
+#
+
+BeastCollection.Shiny.Chance = 1.0
+
+#
+#    BeastCollection.Shiny.Aura
+#        Description: The visual aura shinies wear. 0 = no sparkle.
+#                     58042 Treasure Sparkle, 51444 Glinting Bug Sparkle, 22580 Glowy (Yellow).
+#        Default:     58042
+#
+
+BeastCollection.Shiny.Aura = 58042
+
+#
+#    BeastCollection.Shiny.UnusedSkins
+#        Description: Also use skins from CreatureDisplayInfo.dbc that no creature wears. More
+#                     variety, but some of them have missing textures.
+#        Default:     0
+#
+
+BeastCollection.Shiny.UnusedSkins = 0
+
+#
+#    BeastCollection.Shiny.InInstances
+#        Description: Shinies spawn in dungeons too.
+#        Default:     1
+#
+
+BeastCollection.Shiny.InInstances = 1
+
+#
+#    BeastCollection.Shiny.PetSparkle
+#        Description: A shiny pet keeps sparkling when it's out.
+#        Default:     1
+#
+
+BeastCollection.Shiny.PetSparkle = 1
+
+#
+#    BeastCollection.Rewards.Enable
+#        Description: Dex milestone rewards (world table mod_beast_collection_reward).
+#        Default:     1
+#
+
+BeastCollection.Rewards.Enable = 1
+
+#
+#    BeastCollection.Rewards.MailSender
+#        Description: Creature entry the reward mail comes from. 0 = from the character.
+#        Default:     715 (Hemet Nesingwary Jr.)
+#
+
+BeastCollection.Rewards.MailSender = 715
