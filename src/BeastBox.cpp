@@ -3,10 +3,17 @@
  *
  * Moving a pet between character_pet and mod_beast_box rewrites its row from what the server
  * holds in memory (PetStable::PetInfo, which the core refreshes whenever it saves a pet), in the
- * same transaction that deletes the old row. Like the core's own stable handlers, this counts on
- * the character database's asynchronous queue running in order (CharacterDatabase.WorkerThreads
- * = 1, the default): a pet sent to the box is saved by RemovePet first, then moved. If a row
- * ever ends up in both tables anyway, login keeps the character_pet one.
+ * same transaction that deletes the old row.
+ *
+ * The writes don't count on the character database's asynchronous queue running in order: with
+ * CharacterDatabase.WorkerThreads above 1, two queued writes can land either way round.
+ *   - Boxing: RemovePet's save and the move to the box are separate writes. If the save lands
+ *     last, the pet is in both tables, unslotted in character_pet. The core deletes unslotted
+ *     hunter pet rows on its next pet save, so login keeps the box copy then (it keeps the
+ *     character_pet copy only when the pet is current or stabled there).
+ *   - Calling from the box: the row goes back into character_pet already marked current. As a
+ *     dismissed (unslotted) row it could land after the old pet's save, and that save deletes
+ *     every unslotted hunter pet row of the owner.
  *
  * Released under the MIT License.
  */
@@ -308,32 +315,41 @@ namespace BeastCollection::Box
             } while (result->NextRow());
         }
 
-        // A pet both here and in character_pet: the core already has it, so it stays there.
-        if (PetStable const* stable = player->GetPetStable())
+        // A pet both here and in character_pet. Current or stabled there, the core has it, so
+        // it stays there. Unslotted there, it's a save that landed after the pet was boxed: the
+        // core would delete that row on its next pet save, so the box keeps it.
+        if (PetStable* stable = player->GetPetStable())
         {
-            auto known = [stable](uint32 number)
+            auto slotted = [stable](uint32 number)
             {
                 if (stable->CurrentPet && stable->CurrentPet->PetNumber == number)
                     return true;
                 for (auto const& slot : stable->StabledPets)
                     if (slot && slot->PetNumber == number)
                         return true;
-                for (auto const& pet : stable->UnslottedPets)
-                    if (pet.PetNumber == number)
-                        return true;
                 return false;
             };
             for (auto it = entries.begin(); it != entries.end();)
             {
-                if (known(it->info.PetNumber))
+                uint32 const number = it->info.PetNumber;
+                auto unslotted = std::find_if(stable->UnslottedPets.begin(), stable->UnslottedPets.end(),
+                    [number](PetStable::PetInfo const& p) { return p.PetNumber == number && p.Type == HUNTER_PET; });
+                if (slotted(number))
                 {
-                    LOG_WARN("module", "mod-beast-collection: pet {} of {} was boxed and in character_pet; keeping character_pet",
-                        it->info.PetNumber, guid);
-                    CharacterDatabase.Execute("DELETE FROM `mod_beast_box` WHERE `id` = {}", it->info.PetNumber);
+                    LOG_WARN("module", "mod-beast-collection: pet {} of {} was boxed and slotted in character_pet; keeping character_pet",
+                        number, guid);
+                    CharacterDatabase.Execute("DELETE FROM `mod_beast_box` WHERE `id` = {}", number);
                     it = entries.erase(it);
+                    continue;
                 }
-                else
-                    ++it;
+                if (unslotted != stable->UnslottedPets.end())
+                {
+                    LOG_WARN("module", "mod-beast-collection: pet {} of {} was boxed and unslotted in character_pet; keeping the box",
+                        number, guid);
+                    CharacterDatabase.Execute("DELETE FROM `character_pet` WHERE `id` = {} AND `owner` = {}", number, guid);
+                    stable->UnslottedPets.erase(unslotted);
+                }
+                ++it;
             }
         }
 
@@ -502,7 +518,8 @@ namespace BeastCollection::Box
             Entry taken;
             if (!TakeFromCache(guid, petNumber, taken))
                 return Fail(player, "CALL", "notfound");
-            MoveFromBox(guid, taken.info, PET_SAVE_NOT_IN_SLOT);
+            // Already marked current: see the top of this file.
+            MoveFromBox(guid, taken.info, PET_SAVE_AS_CURRENT);
             stable.UnslottedPets.push_back(taken.info);
         }
 
