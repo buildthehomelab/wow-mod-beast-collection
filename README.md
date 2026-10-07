@@ -41,7 +41,11 @@ No client patch is needed.
 
 ## Install
 
-1. Clone into `modules/mod-beast-collection` and rebuild the worldserver.
+1. Clone into `modules/mod-beast-collection` (the folder name matters: AzerothCore names the script loader after it) and rebuild the worldserver:
+
+   ```bash
+   git clone https://github.com/buildthehomelab/wow-mod-beast-collection.git modules/mod-beast-collection
+   ```
 2. The SQL in `data/sql` is applied automatically: four characters tables (`mod_beast_box`, `mod_beast_dex`, `mod_beast_seen`, `mod_beast_reward_claim`) and one world table (`mod_beast_collection_reward`).
 3. Copy `conf/mod_beast_collection.conf.dist` to your config folder and adjust it.
 4. Give players the `addon/BeastCollection` folder. `sql/portalkeeper_addon.sql` makes Portalkeeper install it; run it by hand.
