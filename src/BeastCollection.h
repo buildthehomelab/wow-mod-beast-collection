@@ -13,6 +13,9 @@
  *     sparkling. Tame it and the pet keeps the skin; shiny looks have their own dex entries.
  *   - Rewards for dex milestones (world table mod_beast_collection_reward), by mail or straight
  *     away.
+ *   - The field guide: target a tameable beast and its look is recorded as found; cast Beast Lore
+ *     on it and it's studied. Each look has a spawn map, each family its diet, talent tree and
+ *     the abilities its pets learn.
  *
  * The BeastCollection addon is the window. It talks to the module through addon whispers, the
  * same way RetailAH does.
@@ -66,6 +69,8 @@ namespace BeastCollection
 
         bool zoneHints = true;
         uint32 zoneSamples = 4;
+        bool discovery = true;
+        uint32 maxPins = 60;              // per look and zone
 
         bool shinyEnabled = true;
         float shinyChance = 1.0f;         // percent
@@ -105,6 +110,14 @@ namespace BeastCollection
             LOOK_RARE   = 0x4,  // only rare beasts wear it
         };
 
+        // A spawn on a zone's world map, in tenths of a percent (0-1000) like the client's map.
+        struct Pin
+        {
+            uint32 zone = 0;
+            uint16 x = 0;
+            uint16 y = 0;
+        };
+
         struct Look
         {
             uint32 display = 0;
@@ -115,6 +128,8 @@ namespace BeastCollection
             uint8 maxLevel = 0;
             std::string name;     // the beast to look for (for a shiny, the beast it replaces)
             std::string zones;    // where it lives, "Zone/Zone"
+            std::vector<uint32> spells;  // what it casts in the wild, revealed by Beast Lore
+            std::vector<Pin> pins;       // by zone, the zone with most spawns first
         };
 
         struct Family
@@ -124,6 +139,15 @@ namespace BeastCollection
             bool exotic = false;
             uint32 normalLooks = 0;
             uint32 shinyLooks = 0;
+            int32 talentType = 0;   // CreatureFamily.dbc: 0 Ferocity, 1 Tenacity, 2 Cunning
+            uint32 foodMask = 0;    // CreatureFamily.dbc petFoodMask
+        };
+
+        struct ZonePin
+        {
+            uint32 display = 0;
+            uint16 x = 0;
+            uint16 y = 0;
         };
 
         struct Data
@@ -136,8 +160,12 @@ namespace BeastCollection
             // ModelId (CreatureDisplayInfo.dbc) -> shiny displays sharing that model
             std::unordered_map<uint32, std::vector<uint32>> shinyByModel;
             std::unordered_set<uint32> shinyDisplays;
+            std::unordered_map<uint32, std::vector<ZonePin>> pinsByZone;  // every normal look's pins
+            std::unordered_map<uint32, std::string> zoneNames;
+            std::unordered_map<std::string, uint32> zoneByName;           // lower case
             uint32 hash = 0;  // changes when the catalog does, so the addon can cache it
             std::vector<std::string> familyRows;
+            std::vector<std::string> abilityRows;
             std::vector<std::string> lookRows;
         };
 
@@ -147,6 +175,11 @@ namespace BeastCollection
         // The same without the reference count, for hot paths (creature updates).
         Data const* Peek();
         Look const* Find(Data const& data, uint32 display);
+
+        // The spawn map of one look, and every normal look's spawns in a zone (by name, as the
+        // client's world map calls it).
+        void SendMap(Player* player, uint32 display);
+        void SendZone(Player* player, std::string_view zoneName);
     }
 
     // ---- BeastBox.cpp: the box and calling pets out --------------------------------------------
@@ -188,6 +221,10 @@ namespace BeastCollection
         // A hunter pet came into the world: register its look.
         void OnPetAdded(Pet* pet);
         void SendDex(Player* player);
+        // The addon saw a beast (target or mouseover): "SEE:<guid>", the client's hex GUID.
+        void HandleSee(Player* player, std::string_view guidText);
+        // Beast Lore landed on a beast: its look is studied.
+        void OnBeastLore(Player* player, Creature* target);
     }
 
     // ---- BeastShiny.cpp: shiny spawns ----------------------------------------------------------

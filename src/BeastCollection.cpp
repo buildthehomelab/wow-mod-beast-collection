@@ -29,6 +29,7 @@ namespace BeastCollection
         Config sConfig;
 
         constexpr uint32 SPELL_TAME_BEAST = 1515;
+        constexpr uint32 SPELL_BEAST_LORE = 1462;
 
         // Bots are sessions without a socket. AzerothCore marks them with
         // WorldSession::IsHeadless(); older playerbots core forks have WorldSession::IsBot()
@@ -68,6 +69,8 @@ namespace BeastCollection
                 flags |= 0x2;
             if (cfg.rewardsEnabled)
                 flags |= 0x4;
+            if (cfg.discovery)
+                flags |= 0x8;
             bool hunter = player->getClass() == CLASS_HUNTER;
             Send(player, "HELLO:" + std::to_string(PROTOCOL_VERSION)
                 + ":" + std::to_string(catalog ? catalog->hash : 0)
@@ -116,6 +119,12 @@ namespace BeastCollection
                 Box::HandleStore(player, number);
             else if (command == "FREE" && ParseUInt(arg, number))
                 Box::HandleRelease(player, number);
+            else if (command == "SEE")
+                Dex::HandleSee(player, arg);
+            else if (command == "MAP" && ParseUInt(arg, number))
+                Catalog::SendMap(player, number);
+            else if (command == "ZONE")
+                Catalog::SendZone(player, arg);
             else
                 Send(player, "ERR:" + std::string(command) + ":unknown");
         }
@@ -139,6 +148,8 @@ namespace BeastCollection
 
         c.zoneHints = sConfigMgr->GetOption<bool>("BeastCollection.Dex.ZoneHints", true);
         c.zoneSamples = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("BeastCollection.Dex.ZoneSamples", 4), 1, 50);
+        c.discovery = sConfigMgr->GetOption<bool>("BeastCollection.Dex.Discovery", true);
+        c.maxPins = std::min<uint32>(sConfigMgr->GetOption<uint32>("BeastCollection.Dex.MaxPins", 60), 500);
 
         c.shinyEnabled = sConfigMgr->GetOption<bool>("BeastCollection.Shiny.Enable", true);
         c.shinyChance = std::clamp(sConfigMgr->GetOption<float>("BeastCollection.Shiny.Chance", 1.0f), 0.0f, 100.0f);
@@ -252,7 +263,8 @@ public:
             PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT,
             PLAYERHOOK_ON_LOGIN,
             PLAYERHOOK_ON_LOGOUT,
-            PLAYERHOOK_ON_DELETE
+            PLAYERHOOK_ON_DELETE,
+            PLAYERHOOK_ON_SPELL_CAST
         }) { }
 
     // The addon whispers itself; swallow those messages so they never show up as chat.
@@ -292,6 +304,15 @@ public:
     void OnPlayerDelete(ObjectGuid guid, uint32 /*accountId*/) override
     {
         Box::OnCharacterDeleted(guid.GetCounter());
+    }
+
+    void OnPlayerSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
+    {
+        if (!GetConfig().enabled || spell->GetSpellInfo()->Id != SPELL_BEAST_LORE)
+            return;
+        Unit* target = spell->m_targets.GetUnitTarget();
+        if (target && target->IsCreature())
+            Dex::OnBeastLore(player, target->ToCreature());
     }
 };
 

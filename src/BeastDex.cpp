@@ -6,18 +6,24 @@
  * account's hunters already own is counted too, so pets tamed before the module was installed
  * aren't lost.
  *
+ * The field guide adds two steps before taming, also per account: a look is found once a hunter
+ * targets (or points at) a beast wearing it, and studied once they cast Beast Lore on one. The
+ * addon reports what the player targets; the server checks the creature is really there.
+ *
  * Released under the MIT License.
  */
 
 #include "BeastCollection.h"
 
 #include "CharacterDatabase.h"
+#include "Creature.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "GameTime.h"
 #include "Item.h"
 #include "Log.h"
 #include "Mail.h"
+#include "ObjectAccessor.h"
 #include "Pet.h"
 #include "Player.h"
 #include "QueryResult.h"
@@ -26,6 +32,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <charconv>
 #include <tuple>
 
 namespace BeastCollection::Dex
@@ -56,9 +63,16 @@ namespace BeastCollection::Dex
 
         using ClaimKey = std::tuple<uint32 /*guid, 0 = account*/, uint32 /*reward*/, uint32 /*family*/>;
 
+        enum SeenLevel : uint8
+        {
+            SEEN_FOUND   = 1,  // targeted
+            SEEN_STUDIED = 2,  // Beast Lore
+        };
+
         struct AccountDex
         {
             std::unordered_set<uint32> displays;
+            std::unordered_map<uint32, uint8> seen;  // display -> SeenLevel
             std::set<ClaimKey> claims;
             std::unordered_set<uint32> online;  // characters holding this entry
         };
@@ -255,6 +269,65 @@ namespace BeastCollection::Dex
             }
             return true;
         }
+
+        // Normal looks the account has found: seen, studied or tamed.
+        uint32 FoundCount(Catalog::Data const& catalog, AccountDex const& dex)
+        {
+            uint32 found = 0;
+            for (Catalog::Look const& look : catalog.looks)
+                if (!(look.flags & Catalog::LOOK_SHINY) && (dex.displays.count(look.display) || dex.seen.count(look.display)))
+                    ++found;
+            return found;
+        }
+
+        // Records a beast's look as found or studied. Pushes SEEN:<display>:<level>:<found> when
+        // that's news.
+        void Discover(Player* player, Creature* creature, uint8 level)
+        {
+            if (!GetConfig().discovery || player->getClass() != CLASS_HUNTER || IsBot(player))
+                return;
+            CreatureTemplate const* cinfo = creature->GetCreatureTemplate();
+            if (!cinfo || !cinfo->IsTameable(true) || creature->IsPet() || creature->GetOwnerGUID() || creature->GetCharmerGUID())
+                return;
+
+            auto catalog = Catalog::Get();
+            Catalog::Look const* look = catalog ? Catalog::Find(*catalog, creature->GetNativeDisplayId()) : nullptr;
+            if (!look)
+                return;
+            uint32 const display = look->display;
+            uint32 const account = Account(player);
+
+            bool tamed = false;
+            bool firstFind = false;
+            uint32 found = 0;
+            {
+                std::lock_guard<std::mutex> guard(sLock);
+                auto it = sDex.find(account);
+                if (it == sDex.end())
+                    return;
+                AccountDex& dex = it->second;
+                uint8& have = dex.seen[display];
+                if (have >= level)
+                    return;
+                tamed = dex.displays.count(display) != 0;
+                firstFind = !have && !tamed;
+                have = level;
+                found = FoundCount(*catalog, dex);
+            }
+
+            CharacterDatabase.Execute("INSERT INTO `mod_beast_seen` (`account`, `display`, `level`, `first_guid`, `first_time`) "
+                "VALUES ({}, {}, {}, {}, {}) ON DUPLICATE KEY UPDATE `level` = GREATEST(`level`, VALUES(`level`))",
+                account, display, level, player->GetGUID().GetCounter(), GameTime::GetGameTime().count());
+
+            bool const shiny = look->flags & Catalog::LOOK_SHINY;
+            std::string const name = (shiny ? "|cffff80ffshiny|r " : "") + std::string("|cffffd100") + look->name + "|r";
+            if (level >= SEEN_STUDIED)
+                Notify(player, "studied " + name + " with Beast Lore. Its abilities are in your field guide.");
+            else if (firstFind)
+                Notify(player, "found " + name + " (" + FamilyName(*catalog, look->family) + ")"
+                    + (shiny ? "" : ", " + std::to_string(found) + "/" + std::to_string(catalog->normalTotal) + " beasts found") + ".");
+            Send(player, "SEEN:" + std::to_string(display) + ":" + std::to_string(level) + ":" + std::to_string(found));
+        }
     }
 
     void LoadRewards()
@@ -307,6 +380,12 @@ namespace BeastCollection::Dex
                 do
                     loaded.displays.insert(result->Fetch()[0].Get<uint32>());
                 while (result->NextRow());
+            if (QueryResult result = CharacterDatabase.Query("SELECT `display`, `level` FROM `mod_beast_seen` WHERE `account` = {}", account))
+                do
+                {
+                    Field* f = result->Fetch();
+                    loaded.seen[f[0].Get<uint32>()] = f[1].Get<uint8>();
+                } while (result->NextRow());
             if (QueryResult result = CharacterDatabase.Query("SELECT `guid`, `reward_id`, `family` FROM `mod_beast_reward_claim` WHERE `account` = {}", account))
                 do
                 {
@@ -318,6 +397,8 @@ namespace BeastCollection::Dex
             AccountDex& dex = sDex[account];
             dex.displays.insert(loaded.displays.begin(), loaded.displays.end());
             dex.claims.insert(loaded.claims.begin(), loaded.claims.end());
+            for (auto const& [display, level] : loaded.seen)
+                dex.seen[display] = std::max(dex.seen[display], level);
         }
 
         // Count what the account's hunters already have, wherever it is.
@@ -394,5 +475,39 @@ namespace BeastCollection::Dex
         }
         SendRows(player, "R", rows);
         Send(player, "RE:" + std::to_string(rows.size()));
+
+        std::vector<std::string> seen;
+        {
+            std::lock_guard<std::mutex> guard(sLock);
+            if (auto it = sDex.find(account); it != sDex.end())
+                for (auto const& [display, level] : it->second.seen)
+                    seen.push_back(std::to_string(display) + "," + std::to_string(level));
+        }
+        SendRows(player, "S", seen);
+        Send(player, "SE:" + std::to_string(seen.size()));
+    }
+
+    void HandleSee(Player* player, std::string_view guidText)
+    {
+        if (guidText.size() > 2 && guidText[0] == '0' && (guidText[1] == 'x' || guidText[1] == 'X'))
+            guidText.remove_prefix(2);
+        uint64 raw = 0;
+        auto result = std::from_chars(guidText.data(), guidText.data() + guidText.size(), raw, 16);
+        if (result.ec != std::errc{} || result.ptr != guidText.data() + guidText.size())
+            return;
+
+        ObjectGuid const guid(raw);
+        if (!guid.IsCreature())
+            return;
+        // Only what the player's client really has in view.
+        Creature* creature = ObjectAccessor::GetCreature(*player, guid);
+        if (!creature || !player->HaveAtClient(creature))
+            return;
+        Discover(player, creature, SEEN_FOUND);
+    }
+
+    void OnBeastLore(Player* player, Creature* target)
+    {
+        Discover(player, target, SEEN_STUDIED);
     }
 }

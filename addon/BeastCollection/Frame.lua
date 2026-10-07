@@ -4,7 +4,7 @@
 
 local BC = BeastCollection
 
-local WIDTH, HEIGHT = 820, 520
+local WIDTH, HEIGHT = 900, 580
 
 local frame = CreateFrame("Frame", "BeastCollectionFrame", UIParent)
 frame:SetSize(WIDTH, HEIGHT)
@@ -95,7 +95,10 @@ local function updateProgress()
 		return
 	end
 	local normal, shiny = BC.Counts()
-	local text = string.format("Beast-dex: |cffffffff%d|r / %d", normal, BC.server.normalTotal)
+	local text = string.format("Tamed: |cffffffff%d|r / %d", normal, BC.server.normalTotal)
+	if BC.Has(BC.server.flags, BC.FEATURE_DISCOVERY) then
+		text = string.format("Found: |cffffffff%d|r / %d   ", (BC.FoundCounts()), BC.server.normalTotal) .. text
+	end
 	if BC.server.shinyTotal > 0 then
 		text = text .. string.format("   %s Shiny: |cffffffff%d|r / %d", BC.SHINY_STAR, shiny, BC.server.shinyTotal)
 	end

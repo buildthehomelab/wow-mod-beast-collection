@@ -49,7 +49,7 @@ local pane = BC.CreateInset(panel)
 pane:SetAllPoints(panel)
 
 local list = BC.CreateList(pane, {
-	rows = 20,
+	rows = 22,
 	rowHeight = 20,
 	columns = {
 		{ title = "Milestone", text = function (r)

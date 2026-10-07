@@ -45,7 +45,7 @@ local list
 local refreshList
 
 list = BC.CreateList(listPane, {
-	rows = 19,
+	rows = 22,
 	rowHeight = 20,
 	columns = {
 		{ title = NAME, icon = function (pet) return BC.FamilyIcon(pet.family) end,
@@ -224,7 +224,7 @@ local function refresh()
 		noHunter:SetText("The beast collection is turned off on this realm.")
 		noHunter:Show()
 	elseif BC.server and not BC.server.hunter then
-		noHunter:SetText("Only hunters keep beasts.\nThe Beast-dex tab shows what your account has tamed.")
+		noHunter:SetText("Only hunters keep beasts.\nThe Field Guide tab shows every beast your account has found and tamed.")
 		noHunter:Show()
 	else
 		noHunter:Hide()

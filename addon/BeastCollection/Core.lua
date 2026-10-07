@@ -21,14 +21,29 @@ BC.PET_SHINY = 16
 BC.PET_EXOTIC = 32
 BC.PET_DISMISSED = 64
 
+-- Server feature flags (HELLO)
+BC.FEATURE_BOX = 1
+BC.FEATURE_SHINY = 2
+BC.FEATURE_REWARDS = 4
+BC.FEATURE_DISCOVERY = 8
+
+-- How much the account knows about a look (field guide)
+BC.KNOW_NONE = 0
+BC.KNOW_FOUND = 1     -- targeted one
+BC.KNOW_STUDIED = 2   -- cast Beast Lore on one
+BC.KNOW_TAMED = 3
+
 -- What the server knows: catalog, the account's dex, this character's pets, the rewards.
-BC.families = {}      -- id -> { id, name, exotic, normal, shiny }
+BC.families = {}      -- id -> { id, name, exotic, normal, shiny, talent, food, abilities }
 BC.familyList = {}
-BC.looks = {}         -- display -> { display, family, flags, entry, minLevel, maxLevel, name, zones }
+BC.looks = {}         -- display -> { display, family, flags, entry, minLevel, maxLevel, name, zones, spells }
 BC.lookList = {}
 BC.owned = {}         -- display -> true
+BC.seen = {}          -- display -> KNOW_FOUND / KNOW_STUDIED
 BC.pets = {}
 BC.rewards = {}
+BC.maps = {}          -- display -> { { id, name, pins = { {x, y}, ... } }, ... } (spawn maps, asked for one by one)
+BC.zonePins = {}      -- lower-case zone name -> { id, pins = { {display, x, y}, ... } }
 BC.catalogReady = false
 
 local bit_band = bit.band
@@ -120,6 +135,59 @@ end
 -----------------------------------------
 -- counts
 
+-- Tamed, studied, found or nothing.
+function BC.Knowledge(display)
+	if BC.owned[display] then return BC.KNOW_TAMED end
+	return BC.seen[display] or BC.KNOW_NONE
+end
+
+-- Immersive mode: looks stay hidden until the account finds them. Only when the server keeps
+-- finds; otherwise nothing could ever be revealed.
+function BC.Immersive()
+	return BC.Setting("immersive") and BC.server and BC.Has(BC.server.flags, BC.FEATURE_DISCOVERY)
+end
+
+function BC.Revealed(look)
+	return not BC.Immersive() or BC.Knowledge(look.display) > BC.KNOW_NONE
+end
+
+-- Beast Lore (or taming) shows what a beast casts; reveal-all mode shows it anyway.
+function BC.Studied(look)
+	return not BC.Immersive() or BC.Knowledge(look.display) >= BC.KNOW_STUDIED
+end
+
+function BC.IsFavorite(display)
+	return BeastCollectionDB and BeastCollectionDB.favorites and BeastCollectionDB.favorites[display] or false
+end
+
+function BC.SetFavorite(display, on)
+	BeastCollectionDB.favorites = BeastCollectionDB.favorites or {}
+	BeastCollectionDB.favorites[display] = on and true or nil
+	BC.Fire("FAVORITES")
+end
+
+-----------------------------------------
+-- settings (BeastCollectionDB.settings)
+
+local DEFAULTS = {
+	immersive = true,   -- hide beasts the account hasn't found
+	worldPins = true,   -- beasts on the world map
+	record = true,      -- report beasts we target or point at
+}
+
+function BC.Setting(key)
+	local settings = BeastCollectionDB and BeastCollectionDB.settings
+	local value = settings and settings[key]
+	if value == nil then return DEFAULTS[key] end
+	return value
+end
+
+function BC.SetSetting(key, value)
+	BeastCollectionDB.settings = BeastCollectionDB.settings or {}
+	BeastCollectionDB.settings[key] = value
+	BC.Fire("SETTINGS", key)
+end
+
 -- normal, shiny, and normal looks per family the account has.
 function BC.Counts()
 	local normal, shiny, byFamily = 0, 0, {}
@@ -135,6 +203,22 @@ function BC.Counts()
 		end
 	end
 	return normal, shiny, byFamily
+end
+
+-- Normal looks found (incl. studied and tamed), studied (incl. tamed), and found per family.
+function BC.FoundCounts()
+	local found, studied, byFamily = 0, 0, {}
+	for _, look in ipairs(BC.lookList) do
+		if not BC.Has(look.flags, BC.LOOK_SHINY) then
+			local know = BC.Knowledge(look.display)
+			if know >= BC.KNOW_FOUND then
+				found = found + 1
+				byFamily[look.family] = (byFamily[look.family] or 0) + 1
+			end
+			if know >= BC.KNOW_STUDIED then studied = studied + 1 end
+		end
+	end
+	return found, studied, byFamily
 end
 
 -----------------------------------------
@@ -167,7 +251,8 @@ local function eachRow(body, fn)
 	end
 end
 
-local pending = { F = {}, C = {}, P = {}, O = {}, R = {} }
+local pending = { F = {}, A = {}, C = {}, P = {}, O = {}, R = {}, S = {} }
+local pendingMaps, pendingZones = {}, {}
 
 local function realmCache()
 	BeastCollectionDB.catalogs = BeastCollectionDB.catalogs or {}
@@ -175,7 +260,7 @@ local function realmCache()
 	return BeastCollectionDB.catalogs, realm
 end
 
-local function buildCatalog(familyRows, lookRows)
+local function buildCatalog(familyRows, lookRows, abilityRows)
 	wipe(BC.families)
 	wipe(BC.familyList)
 	wipe(BC.looks)
@@ -184,6 +269,7 @@ local function buildCatalog(familyRows, lookRows)
 		local family = {
 			id = tonumber(f[1]), name = f[2] or "?", exotic = f[3] == "1",
 			normal = tonumber(f[4]) or 0, shiny = tonumber(f[5]) or 0,
+			talent = tonumber(f[6]) or -1, food = tonumber(f[7]) or 0, abilities = {},
 		}
 		if family.id then
 			BC.families[family.id] = family
@@ -191,12 +277,27 @@ local function buildCatalog(familyRows, lookRows)
 		end
 	end
 	table.sort(BC.familyList, function (a, b) return a.name < b.name end)
+	-- "<family>,<spell>-<pet level>/<spell>-<pet level>...": one ability, its ranks in order
+	for _, a in ipairs(abilityRows or {}) do
+		local family = BC.families[tonumber(a[1]) or 0]
+		if family and a[2] then
+			local ranks = {}
+			for _, rank in ipairs(split(a[2], "/")) do
+				local spell, level = string.match(rank, "^(%d+)-(%d+)$")
+				if spell then table.insert(ranks, { spell = tonumber(spell), level = tonumber(level) }) end
+			end
+			if #ranks > 0 then table.insert(family.abilities, ranks) end
+		end
+	end
 	for i, l in ipairs(lookRows) do
 		local look = {
 			display = tonumber(l[1]), family = tonumber(l[2]) or 0, flags = tonumber(l[3]) or 0,
 			entry = tonumber(l[4]) or 0, minLevel = tonumber(l[5]) or 0, maxLevel = tonumber(l[6]) or 0,
-			name = l[7] or "?", zones = l[8] or "", order = i,
+			name = l[7] or "?", zones = l[8] or "", spells = {}, order = i,
 		}
+		for _, spell in ipairs(split(l[9] or "", "/")) do
+			if tonumber(spell) then table.insert(look.spells, tonumber(spell)) end
+		end
 		if look.display then
 			BC.looks[look.display] = look
 			table.insert(BC.lookList, look)
@@ -251,7 +352,7 @@ handlers.HELLO = function (args)
 	local cache, realm = realmCache()
 	local cached = cache[realm]
 	if cached and cached.hash == BC.server.hash then
-		buildCatalog(cached.families, cached.looks)
+		buildCatalog(cached.families, cached.looks, cached.abilities)
 	end
 	BC.Fire("HELLO")
 end
@@ -262,14 +363,15 @@ handlers.OFF = function ()
 end
 
 handlers.F = function (body) eachRow(body, function (row) table.insert(pending.F, row) end) end
+handlers.A = function (body) eachRow(body, function (row) table.insert(pending.A, row) end) end
 handlers.C = function (body) eachRow(body, function (row) table.insert(pending.C, row) end) end
 
 handlers.CE = function (args)
 	local hash = split(args, ":")[1]
 	local cache, realm = realmCache()
-	cache[realm] = { hash = hash, families = pending.F, looks = pending.C }
-	buildCatalog(pending.F, pending.C)
-	pending.F, pending.C = {}, {}
+	cache[realm] = { hash = hash, families = pending.F, looks = pending.C, abilities = pending.A }
+	buildCatalog(pending.F, pending.C, pending.A)
+	pending.F, pending.C, pending.A = {}, {}, {}
 end
 
 handlers.O = function (body)
@@ -287,6 +389,84 @@ handlers.OE = function ()
 end
 
 handlers.R = function (body) eachRow(body, function (row) table.insert(pending.R, row) end) end
+
+handlers.S = function (body) eachRow(body, function (row) table.insert(pending.S, row) end) end
+
+handlers.SE = function ()
+	wipe(BC.seen)
+	for _, row in ipairs(pending.S) do
+		local display, level = tonumber(row[1]), tonumber(row[2])
+		if display and level then BC.seen[display] = level end
+	end
+	pending.S = {}
+	BC.Fire("DEX")
+end
+
+-- SEEN:<display>:<level>:<found>: a look found or studied just now.
+handlers.SEEN = function (args)
+	local parts = split(args, ":")
+	local display, level = tonumber(parts[1]), tonumber(parts[2])
+	if not display or not level then return end
+	if (BC.seen[display] or 0) < level then BC.seen[display] = level end
+	BC.Fire("DEX")
+	BC.Fire("SEEN", display, level)
+end
+
+-- Spawn maps. MZ:<display>:<zone>,<name>,<pins>;...  MP:<display>:<zone>,<x>,<y>;...  ME:<display>
+local function pendingMap(display)
+	pendingMaps[display] = pendingMaps[display] or { zones = {}, byId = {} }
+	return pendingMaps[display]
+end
+
+handlers.MZ = function (args)
+	local display, body = string.match(args, "^(%d+):(.*)$")
+	if not display then return end
+	local map = pendingMap(tonumber(display))
+	eachRow(body, function (row)
+		local zone = { id = tonumber(row[1]) or 0, name = row[2] or "?", pins = {} }
+		table.insert(map.zones, zone)
+		map.byId[zone.id] = zone
+	end)
+end
+
+handlers.MP = function (args)
+	local display, body = string.match(args, "^(%d+):(.*)$")
+	if not display then return end
+	local map = pendingMap(tonumber(display))
+	eachRow(body, function (row)
+		local zone = map.byId[tonumber(row[1]) or 0]
+		local x, y = tonumber(row[2]), tonumber(row[3])
+		if zone and x and y then table.insert(zone.pins, { x / 10, y / 10 }) end
+	end)
+end
+
+handlers.ME = function (args)
+	local display = tonumber(split(args, ":")[1])
+	if not display then return end
+	BC.maps[display] = (pendingMaps[display] or { zones = {} }).zones
+	pendingMaps[display] = nil
+	BC.Fire("MAP", display)
+end
+
+-- Every look's spawns in one zone. ZP:<zone>:<display>,<x>,<y>;...  ZE:<zone>:<pins>:<name>
+handlers.ZP = function (args)
+	local zone, body = string.match(args, "^(%d+):(.*)$")
+	if not zone then return end
+	local pins = pendingZones[zone] or {}
+	pendingZones[zone] = pins
+	eachRow(body, function (row)
+		local display, x, y = tonumber(row[1]), tonumber(row[2]), tonumber(row[3])
+		if display and x and y then table.insert(pins, { display, x / 10, y / 10 }) end
+	end)
+end
+
+handlers.ZE = function (args)
+	local zone, name = string.match(args, "^(%d+):%d+:(.*)$")
+	if not zone then return end
+	BC.zonePins[string.lower(name)] = { id = tonumber(zone), pins = pendingZones[zone] or {} }
+	pendingZones[zone] = nil
+	BC.Fire("ZONE", name)
+end
 
 handlers.RE = function ()
 	wipe(BC.rewards)
@@ -381,6 +561,40 @@ function BC.Release(pet)
 	BC.Send("FREE:" .. pet.id)
 end
 
+local mapAsked, zoneAsked = {}, {}
+
+-- A look's spawn map; MAP fires when it's there.
+function BC.RequestMap(display)
+	if BC.maps[display] or mapAsked[display] or not BC.server or BC.server.mismatch or BC.server.off then return end
+	mapAsked[display] = true
+	BC.Send("MAP:" .. display)
+end
+
+-- Every beast's spawns in a zone, by the name the world map gives it; ZONE fires when it's there.
+function BC.RequestZone(name)
+	local key = string.lower(name or "")
+	if key == "" or BC.zonePins[key] or zoneAsked[key] or not BC.server or BC.server.mismatch or BC.server.off then return end
+	zoneAsked[key] = true
+	BC.Send("ZONE:" .. name)
+end
+
+-----------------------------------------
+-- the field guide: tell the server about tameable-looking beasts we target or point at; it
+-- checks the creature really is there and tameable
+
+local reported = {}
+
+local function report(unit)
+	local server = BC.server
+	if not server or not server.hunter or server.mismatch or server.off or not BC.Has(server.flags, BC.FEATURE_DISCOVERY) then return end
+	if not BC.Setting("record") then return end
+	if not UnitExists(unit) or UnitIsPlayer(unit) or UnitPlayerControlled(unit) or not UnitCreatureFamily(unit) then return end
+	local guid = UnitGUID(unit)
+	if not guid or reported[guid] then return end
+	reported[guid] = true
+	BC.Send("SEE:" .. guid)
+end
+
 -----------------------------------------
 -- events
 
@@ -388,6 +602,8 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("CHAT_MSG_ADDON")
+events:RegisterEvent("PLAYER_TARGET_CHANGED")
+events:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 events:SetScript("OnEvent", function (self, event, a1, a2, a3, a4)
 	if event == "ADDON_LOADED" and a1 == "BeastCollection" then
 		BeastCollectionDB = BeastCollectionDB or {}
@@ -398,6 +614,10 @@ events:SetScript("OnEvent", function (self, event, a1, a2, a3, a4)
 		if a1 == BC.PREFIX and a3 == "WHISPER" and a4 == UnitName("player") then
 			onMessage(a2)
 		end
+	elseif event == "PLAYER_TARGET_CHANGED" then
+		report("target")
+	elseif event == "UPDATE_MOUSEOVER_UNIT" then
+		report("mouseover")
 	end
 end)
 
@@ -410,10 +630,23 @@ function BC.Toggle()
 	if BC.frame:IsShown() then BC.frame:Hide() else BC.frame:Show() end
 end
 
+-- Opens the window on the Field Guide tab, at a look if one is given.
+function BC.ShowLook(display)
+	if not BC.frame then return end
+	BC.frame:Show()
+	if BC.dexTab then BC.SelectTab(BC.dexTab) end
+	if display then BC.Fire("SHOW_LOOK", display) end
+end
+
 SLASH_BEASTCOLLECTION1 = "/beasts"
 SLASH_BEASTCOLLECTION2 = "/beastcollection"
+SLASH_BEASTCOLLECTION3 = "/fieldguide"
 SlashCmdList["BEASTCOLLECTION"] = function (msg)
 	msg = string.lower(msg or "")
+	if msg == "guide" or msg == "dex" then
+		BC.ShowLook()
+		return
+	end
 	if msg == "reset" then
 		BeastCollectionDB.position = nil
 		BeastCollectionDB.catalogs = nil

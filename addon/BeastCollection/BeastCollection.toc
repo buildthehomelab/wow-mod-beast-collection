@@ -1,14 +1,16 @@
 ## Interface: 30300
 ## Title: Beast Collection
-## Notes: Hunter stables, Pokémon style: an unlimited box of beasts, a beast-dex and shinies. Needs the mod-beast-collection server module.
+## Notes: Hunter stables, Pokémon style: an unlimited box of beasts, a field guide of every tameable beast, and shinies. Needs the mod-beast-collection server module.
 ## Author: buildthehomelab
-## Version: 1.0.0
+## Version: 1.1.0
 ## OptionalDeps: DragonUI
 ## SavedVariables: BeastCollectionDB
 
 Core.lua
 Widgets.lua
+MapView.lua
 Frame.lua
 Beasts.lua
 Dex.lua
 Rewards.lua
+WorldPins.lua

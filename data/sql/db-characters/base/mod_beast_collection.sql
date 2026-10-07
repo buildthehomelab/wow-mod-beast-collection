@@ -1,4 +1,4 @@
--- mod-beast-collection: the pet box, the account-wide beast-dex and claimed rewards.
+-- mod-beast-collection: the pet box, the account-wide beast-dex, field guide finds and claimed rewards.
 
 -- Boxed hunter pets. The same columns as character_pet: a pet moves here when it goes into the
 -- box and back when it's called out. Its spells, auras and cooldowns stay in pet_spell, pet_aura
@@ -33,6 +33,17 @@ CREATE TABLE IF NOT EXISTS `mod_beast_dex` (
     `first_time` INT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (`account`, `display`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='mod-beast-collection: account beast-dex';
+
+-- Field guide: beast looks an account has found (1, targeted) or studied (2, Beast Lore).
+-- Tamed looks are in mod_beast_dex.
+CREATE TABLE IF NOT EXISTS `mod_beast_seen` (
+    `account`    INT UNSIGNED     NOT NULL,
+    `display`    INT UNSIGNED     NOT NULL,
+    `level`      TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    `first_guid` INT UNSIGNED     NOT NULL DEFAULT 0,
+    `first_time` INT UNSIGNED     NOT NULL DEFAULT 0,
+    PRIMARY KEY (`account`, `display`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='mod-beast-collection: field guide finds';
 
 -- Rewards already given. `guid` is 0 for a reward given once per account; `family` is the
 -- family for a per-family reward, else 0.

@@ -81,6 +81,25 @@ BeastCollection.Dex.ZoneHints = 1
 BeastCollection.Dex.ZoneSamples = 4
 
 #
+#    BeastCollection.Dex.Discovery
+#        Description: The field guide's finds. A hunter who targets a tameable beast records
+#                     its look as found; Beast Lore on it marks it studied. Shared by the
+#                     account, like the dex. 0 = only tamed looks count.
+#        Default:     1
+#
+
+BeastCollection.Dex.Discovery = 1
+
+#
+#    BeastCollection.Dex.MaxPins
+#        Description: Spawn map pins kept per beast look and zone. Spawns closer than 1% of the
+#                     map to another pin are merged first. 0 = no limit.
+#        Default:     60
+#
+
+BeastCollection.Dex.MaxPins = 60
+
+#
 #    BeastCollection.Shiny.Enable
 #        Description: Tameable beasts sometimes spawn in a rare alternate skin of their model
 #                     (another creature's colouring) and sparkle. Tamed, the pet keeps the skin.

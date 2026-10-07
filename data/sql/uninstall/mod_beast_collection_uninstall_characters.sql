@@ -11,4 +11,5 @@ DELETE FROM `character_pet_declinedname` WHERE `id` IN (SELECT `id` FROM `mod_be
 
 DROP TABLE IF EXISTS `mod_beast_box`;
 DROP TABLE IF EXISTS `mod_beast_dex`;
+DROP TABLE IF EXISTS `mod_beast_seen`;
 DROP TABLE IF EXISTS `mod_beast_reward_claim`;
