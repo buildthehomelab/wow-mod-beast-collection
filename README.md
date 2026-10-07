@@ -31,7 +31,7 @@ Auto-boxing on tame happens in a spell-check hook that runs before Tame Beast's 
 
 Shinies use the creature's level-selection hook. That hook runs as a creature spawns, and on a respawn it runs just before the core reapplies the creature's display. A shiny skin is another display with the same model file (`CreatureDisplayInfo.dbc` ModelId) that no tameable beast wears, such as a boss wolf's or a quest bear's colouring. Displays scaled very differently from the beast are skipped. The sparkle is the stock Treasure Sparkle aura (58042), marked to survive evading.
 
-Like the core's own stable handlers, moving pets assumes the character database runs its queries in order (`CharacterDatabase.WorkerThreads = 1`, the default). If a pet ever ends up in both tables, login keeps the `character_pet` copy.
+Moving pets doesn't need the character database to run its queries in order, so `CharacterDatabase.WorkerThreads` above 1 is fine. With several workers, a pet's save can land after it was moved to the box, leaving it in both tables. If that happens, login keeps the box copy, unless the core has the pet current or stabled.
 
 Found and studied looks are in `mod_beast_seen`. The addon reports the GUID of each beast the player targets or points at. The server records it only if that creature is tameable and the player's client really has it in view, so it can't be faked from across the world. Beast Lore is caught in the spell-cast hook. Only hunters record finds.
 
@@ -114,6 +114,10 @@ The addon whispers itself `BCOL\t<command>`. The server swallows these messages 
 | | pushed: `NEW:<display>:<looks>:<shiny>`, `REWARD:<id>:<text>` |
 
 ## Patch Notes
+
+### 1.1.1
+
+- Fixed: with several character database workers, a beast sent to the box could be lost after a relog.
 
 ### 1.1.0: The field guide
 
