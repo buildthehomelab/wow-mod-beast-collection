@@ -39,7 +39,13 @@ Spawn pins are worked out at startup without touching terrain: each spawn goes o
 
 No client patch is needed.
 
-## Install
+## Requirements
+
+- AzerothCore (wotlk, master branch) and a WoW 3.3.5a (12340) client. No client patch.
+- The `addon/BeastCollection` addon for the window. Players need it to use the box and the field guide. It uses DragonUI's art when DragonUI is installed.
+- It also works on the mod-playerbots core fork; it detects `WorldSession::IsHeadless()` or `IsBot()` and needs neither.
+
+## Installation
 
 1. Clone into `modules/mod-beast-collection` (the folder name matters: AzerothCore names the script loader after it) and rebuild the worldserver:
 
@@ -146,4 +152,16 @@ lua tools/addon_smoke_test.lua addon/BeastCollection
 
 This stubs enough of the 3.3.5a API to load the addon and replay fake server replies through the real protocol code, the world map calls included.
 
-Released under the MIT License.
+## Troubleshooting
+
+- **The window has no data:** the addon talks to the server module through addon whispers, so both must be installed. `BeastCollection.Enable` has to be `1`.
+- **A boxed pet is in both the box and the stable:** this can happen with `CharacterDatabase.WorkerThreads` above 1. Login keeps the box copy, unless the core has the pet current or stabled.
+- **Rewards didn't arrive:** they come by mail from the creature in `BeastCollection.Rewards.MailSender`, and only hunters receive them. Edit `mod_beast_collection_reward` and run `.reload config` to change them.
+
+## Credits
+
+Author: [buildthehomelab](https://github.com/buildthehomelab)
+
+## License
+
+MIT. See [LICENSE](LICENSE).
