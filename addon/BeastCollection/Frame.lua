@@ -1,6 +1,7 @@
 -- The Beast Collection window: chrome, tabs along the bottom and a status line. Each tab file
 -- adds its panel with BC.AddTab. Drag it by the title bar; it remembers where it was put
--- (/beasts reset puts it back).
+-- (/beasts reset puts it back). With the Journal addon installed, the Field Guide lives in the
+-- Journal's window instead (its Beasts tab) and this window keeps a tab that opens it.
 
 local BC = BeastCollection
 
@@ -116,23 +117,27 @@ end)
 
 local panels, tabs = {}, {}
 
+-- The Journal addon (mod-forever-journal) is there to take the Field Guide as a tab.
+function BC.InJournal()
+	return Journal and Journal.RegisterTab and (Journal.API or 0) >= 1 and true or false
+end
+
 function BC.SelectTab(index)
+	-- A tab that opens somewhere else has no panel here.
+	if not panels[index] then index = 1 end
 	PanelTemplates_SetTab(frame, index)
 	for i, panel in ipairs(panels) do
-		if i == index then panel:Show() else panel:Hide() end
+		if panel then
+			if i == index then panel:Show() else panel:Hide() end
+		end
 	end
 	BC.currentTab = index
 	BC.Fire("TAB", index)
 end
 
-function BC.AddTab(name)
+local function addTabButton(name, onClick)
 	local index = #panels + 1
-	local panel = CreateFrame("Frame", nil, content)
-	panel:SetAllPoints(content)
-	panel:Hide()
-	panels[index] = panel
-
-	local tab = BC.CreateTab(frame, index, name, BC.SelectTab)
+	local tab = BC.CreateTab(frame, index, name, onClick)
 	if index == 1 then
 		tab:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 11, dragon and 2 or 4)
 	else
@@ -140,7 +145,23 @@ function BC.AddTab(name)
 	end
 	tabs[index] = tab
 	PanelTemplates_SetNumTabs(frame, index)
+	return index
+end
+
+function BC.AddTab(name)
+	local panel = CreateFrame("Frame", nil, content)
+	panel:SetAllPoints(content)
+	panel:Hide()
+	local index = addTabButton(name, BC.SelectTab)
+	panels[index] = panel
 	return panel, index
+end
+
+-- A tab that runs onClick instead of showing a panel of this window.
+function BC.AddLinkTab(name, onClick)
+	local index = addTabButton(name, function () onClick() end)
+	panels[index] = false
+	return index
 end
 
 -----------------------------------------
