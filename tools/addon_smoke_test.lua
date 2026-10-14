@@ -313,6 +313,35 @@ local function step(name, fn)
 	tick(1)
 end
 
+-- With JOURNAL=1, a Journal addon stand-in: the Field Guide becomes its Beasts tab.
+local JOURNAL = os.getenv("JOURNAL") == "1"
+local journalTabs, journalOpened = {}, nil
+if JOURNAL then
+	Journal = {
+		API = 1,
+		RegisterTab = function (spec)
+			assert(spec.key and spec.name, "tab without key or name")
+			local panel = CreateFrame("Frame", nil, UIParent)
+			panel:Hide()
+			spec.panel = panel
+			journalTabs[spec.key] = spec
+			return panel
+		end,
+		OpenTab = function (key)
+			local spec = journalTabs[key]
+			if not spec then return false end
+			journalOpened = key
+			spec.panel:Show()
+			if spec.onShow then spec.onShow(spec.panel) end
+			return true
+		end,
+	}
+end
+
+local function openGuide()
+	if JOURNAL then Journal.OpenTab("beasts") else BeastCollection.SelectTab(2) end
+end
+
 local function loadAddon()
 	for line in io.lines(dir .. "/BeastCollection.toc") do
 		if line:match("%.lua$") then
@@ -402,7 +431,11 @@ local function dexLooks()
 end
 
 step("field guide tab: families, filters, hidden beasts", function ()
-	BC.SelectTab(2)
+	openGuide()
+	if JOURNAL then
+		assert(journalTabs.beasts and journalTabs.beasts.name == "Beasts", "no Beasts tab in the Journal")
+		assert(journalOpened == "beasts", "Journal not opened on the Beasts tab")
+	end
 	tick(0.5)
 	local looks = dexLooks()
 	assert(looks and #looks.items == 3, "guide should list 3 normal looks, got " .. (looks and #looks.items or 0))
@@ -495,7 +528,12 @@ step("the options menu turns immersive mode off", function ()
 end)
 
 step("a new look arrives", function ()
-	BC.SelectTab(2)
+	-- With the Journal, the map pin step moved the guide to the Journal's window; this window
+	-- comes back (asking the server again) before the new look arrives.
+	if JOURNAL then BC.frame:Show() tick(1) end
+	-- The Journal's tab asks the server again when it opens; its answer comes first.
+	openGuide()
+	tick(1)
 	fire("CHAT_MSG_ADDON", "BCOL", "NEW:1002:3:1", "WHISPER", "Tester")
 	assert(BC.owned[1002], "new look not marked")
 	assert(findText("Found: |cffffffff3|r / 3   Tamed: |cffffffff3|r / 3"), "progress not updated")

@@ -630,17 +630,24 @@ function BC.Toggle()
 	if BC.frame:IsShown() then BC.frame:Hide() else BC.frame:Show() end
 end
 
--- Opens the window on the Field Guide tab, at a look if one is given.
+-- Opens the Field Guide, at a look if one is given: the Journal's Beasts tab when the Journal
+-- is installed, this window's Field Guide tab otherwise.
 function BC.ShowLook(display)
-	if not BC.frame then return end
-	BC.frame:Show()
-	if BC.dexTab then BC.SelectTab(BC.dexTab) end
+	if BC.InJournal and BC.InJournal() then
+		if BC.frame and BC.frame:IsShown() then BC.frame:Hide() end
+		Journal.OpenTab("beasts")
+	else
+		if not BC.frame then return end
+		BC.frame:Show()
+		if BC.dexTab then BC.SelectTab(BC.dexTab) end
+	end
 	if display then BC.Fire("SHOW_LOOK", display) end
 end
 
 SLASH_BEASTCOLLECTION1 = "/beasts"
 SLASH_BEASTCOLLECTION2 = "/beastcollection"
-SLASH_BEASTCOLLECTION3 = "/fieldguide"
+SLASH_BEASTFIELDGUIDE1 = "/fieldguide"
+SlashCmdList["BEASTFIELDGUIDE"] = function () BC.ShowLook() end
 SlashCmdList["BEASTCOLLECTION"] = function (msg)
 	msg = string.lower(msg or "")
 	if msg == "guide" or msg == "dex" then

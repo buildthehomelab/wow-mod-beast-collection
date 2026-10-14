@@ -7,7 +7,9 @@ Hunter stables, Pokémon style, for AzerothCore (3.3.5a).
 - **Shinies.** Now and then (1% by default) a tameable beast spawns in a rare alternate skin of its own model and sparkles. Tame it and the pet keeps the skin. Shiny looks have their own dex entries.
 - **Rewards.** Dex milestones mail you companion pets, a raptor mount and gold, from Hemet Nesingwary Jr. The rewards are in a world table, so you can change them.
 
-The **BeastCollection** addon is the window (`/beasts`, `/fieldguide`, a key binding, or the button on the stable master's window). It has three tabs: Beasts, Field Guide and Rewards. It uses DragonUI's art when DragonUI is installed and the stock Blizzard frames otherwise.
+The **BeastCollection** addon is the window (`/beasts`, a key binding, or the button on the stable master's window). It has three tabs: Beasts, Field Guide and Rewards. It uses DragonUI's art when DragonUI is installed and the stock Blizzard frames otherwise.
+
+With the [Journal](https://github.com/buildthehomelab/wow-mod-forever-journal) addon installed, the field guide is the Journal's **Beasts** tab instead, beside its dungeons, mounts and pets. This window keeps the Beasts and Rewards tabs, and its Field Guide tab opens the Journal there. `/fieldguide` (or `/beasts guide`) and the world map pins open the field guide wherever it is.
 
 ### The field guide
 
@@ -121,6 +123,10 @@ The addon whispers itself `BCOL\t<command>`. The server swallows these messages 
 
 ## Patch Notes
 
+### 1.2.0
+
+- With the Journal addon, the field guide is the Journal's **Beasts** tab. The Beast Collection window's Field Guide tab, `/fieldguide` and the world map pins open it there.
+
 ### 1.1.1
 
 - Fixed: with several character database workers, a beast sent to the box could be lost after a relog.
@@ -148,9 +154,10 @@ The addon whispers itself `BCOL\t<command>`. The server swallows these messages 
 
 ```bash
 lua tools/addon_smoke_test.lua addon/BeastCollection
+JOURNAL=1 lua tools/addon_smoke_test.lua addon/BeastCollection
 ```
 
-This stubs enough of the 3.3.5a API to load the addon and replay fake server replies through the real protocol code, the world map calls included.
+`JOURNAL=1` runs it with a Journal stand-in, so the field guide loads as the Journal's tab; `DRAGON=1` with a DragonUI stand-in. This stubs enough of the 3.3.5a API to load the addon and replay fake server replies through the real protocol code, the world map calls included.
 
 ## Troubleshooting
 

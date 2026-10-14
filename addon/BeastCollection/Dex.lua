@@ -7,7 +7,17 @@
 
 local BC = BeastCollection
 
-local panel, tabIndex = BC.AddTab("Field Guide")
+local panel, tabIndex
+if BC.InJournal() then
+	-- The Journal's Beasts tab; this window's Field Guide tab opens it.
+	panel = Journal.RegisterTab({
+		key = "beasts", name = "Beasts", order = 60, icon = "Interface\\Icons\\Ability_Hunter_BeastTaming",
+		onShow = function () BC.Refresh() end,
+	})
+	BC.AddLinkTab("Field Guide", function () BC.ShowLook() end)
+else
+	panel, tabIndex = BC.AddTab("Field Guide")
+end
 BC.dexTab = tabIndex
 
 local FILTER_ALL, FILTER_SHINY = -1, -2
