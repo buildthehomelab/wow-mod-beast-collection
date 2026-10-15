@@ -14,12 +14,14 @@
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "SpellInfo.h"
+#include "Timer.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
 #include <algorithm>
 #include <charconv>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 
 namespace BeastCollection
@@ -30,6 +32,47 @@ namespace BeastCollection
 
         constexpr uint32 SPELL_TAME_BEAST = 1515;
         constexpr uint32 SPELL_BEAST_LORE = 1462;
+
+        // CAT and DEX answer with hundreds of whispers each; addon whispers are never muted by the
+        // chat flood check, so each character gets a budget. The burst covers opening the window
+        // twice and clicking through looks; scripted loops run out. The addon asks again on "busy".
+        constexpr float REQUEST_BURST = 40.0f;
+        constexpr float REQUEST_RATE = 4.0f;
+
+        struct RequestBudget
+        {
+            float tokens = REQUEST_BURST;
+            uint32 lastRefill = 0;
+        };
+
+        std::unordered_map<ObjectGuid::LowType, RequestBudget> sBudgets;
+
+        bool TakeToken(RequestBudget& budget, float cost)
+        {
+            uint32 now = getMSTime();
+            if (budget.lastRefill)
+                budget.tokens = std::min(REQUEST_BURST, budget.tokens + getMSTimeDiff(budget.lastRefill, now) * REQUEST_RATE / 1000.0f);
+            budget.lastRefill = now;
+            if (budget.tokens < cost)
+                return false;
+            budget.tokens -= cost;
+            return true;
+        }
+
+        float CostOf(std::string_view command)
+        {
+            if (command == "CAT" || command == "DEX")
+                return 4.0f;
+            // One per beast the player targets or points at for the first time.
+            if (command == "SEE")
+                return 0.25f;
+            return 1.0f;
+        }
+
+        void ForgetBudget(Player* player)
+        {
+            sBudgets.erase(player->GetGUID().GetCounter());
+        }
 
         // Bots are sessions without a socket. AzerothCore marks them with
         // WorldSession::IsHeadless(); older playerbots core forks have WorldSession::IsBot()
@@ -102,6 +145,12 @@ namespace BeastCollection
             {
                 command = msg.substr(0, colon);
                 arg = msg.substr(colon + 1);
+            }
+
+            if (!TakeToken(sBudgets[player->GetGUID().GetCounter()], CostOf(command)))
+            {
+                Send(player, "ERR:" + std::string(command) + ":busy");
+                return;
             }
 
             uint32 number = 0;
@@ -297,6 +346,7 @@ public:
 
     void OnPlayerLogout(Player* player) override
     {
+        ForgetBudget(player);
         Box::OnLogout(player);
         Dex::OnLogout(player);
     }
