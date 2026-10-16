@@ -2,7 +2,7 @@
 ## Title: Beast Collection
 ## Notes: Hunter stables, Pokémon style: an unlimited box of beasts, a field guide of every tameable beast, and shinies. With the Journal addon the field guide is its Beasts tab. Needs the mod-beast-collection server module.
 ## Author: buildthehomelab
-## Version: 1.2.1
+## Version: 1.2.2
 ## OptionalDeps: DragonUI, Journal
 ## SavedVariables: BeastCollectionDB
 
