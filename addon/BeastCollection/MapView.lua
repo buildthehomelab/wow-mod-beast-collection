@@ -80,9 +80,12 @@ function BC.CreateZoneMap(parent, width)
 	local map = CreateFrame("Button", nil, parent)
 	map:SetSize(width, floor(MAP_H * scale + 0.5))
 
-	local backdrop = map:CreateTexture(nil, "BACKGROUND", nil, -8)
-	backdrop:SetAllPoints(map)
-	backdrop:SetTexture(0, 0, 0, 0.6)
+	-- DragonUI's look darkens the map's area; the stock look leaves it to the pane behind
+	if BC.Dragon() then
+		local backdrop = map:CreateTexture(nil, "BACKGROUND", nil, -8)
+		backdrop:SetAllPoints(map)
+		backdrop:SetTexture(0, 0, 0, 0.6)
+	end
 
 	local tiles = {}
 	for i = 1, 12 do
