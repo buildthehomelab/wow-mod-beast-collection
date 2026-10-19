@@ -609,7 +609,12 @@ local function abilityRow(i)
 	row.ranks:SetPoint("RIGHT", row, "RIGHT", -2, 0)
 	local hl = row:CreateTexture(nil, "HIGHLIGHT")
 	hl:SetAllPoints(row)
-	hl:SetTexture(1, 1, 1, 0.08)
+	if BC.Dragon() then
+		hl:SetTexture(1, 1, 1, 0.08)
+	else
+		hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+		hl:SetBlendMode("ADD")
+	end
 	row:SetScript("OnEnter", function (self)
 		if not self.ranksList then return end
 		local last = self.ranksList[#self.ranksList]
