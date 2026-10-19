@@ -102,7 +102,8 @@ function BC.DressWindow(frame)
 end
 
 -- A recessed pane: retail's InsetFrameTemplate with DragonUI, the stock options-box look without
--- (OptionsBoxTemplate's tooltip border and background at its colours).
+-- (OptionsBoxTemplate's tooltip border at its 0.4 grey, over a 0.1 grey wash of the stock tooltip
+-- background).
 function BC.CreateInset(parent)
 	local pane = CreateFrame("Frame", nil, parent)
 	local D = BC.Dragon()
