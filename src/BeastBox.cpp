@@ -11,9 +11,12 @@
  *     last, the pet is in both tables, unslotted in character_pet. The core deletes unslotted
  *     hunter pet rows on its next pet save, so login keeps the box copy then (it keeps the
  *     character_pet copy only when the pet is current or stabled there).
- *   - Calling from the box: the row goes back into character_pet already marked current. As a
- *     dismissed (unslotted) row it could land after the old pet's save, and that save deletes
- *     every unslotted hunter pet row of the owner.
+ *   - Calling: the old pet's save (from the box or the stable) or the dismiss's save deletes
+ *     the owner's slot-0 and unslotted hunter pet rows, so it also deletes or moves the called
+ *     pet's row when it lands after the write that marks the called pet current. The called
+ *     pet is saved again a few seconds after the call (ResaveCalledPet), which puts its row
+ *     back if that happened. This narrows the window to those seconds; it isn't an ordering
+ *     guarantee.
  *
  * Released under the MIT License.
  */
@@ -205,6 +208,33 @@ namespace BeastCollection::Box
                 MoveToBox(owner, *it);
                 it = stable->UnslottedPets.erase(it);
             }
+        }
+
+        // The old pet's save may still be queued behind the call's writes; see the top of this
+        // file. A few seconds later it has almost always landed, and this save writes the row
+        // back. While the called pet is still loading (its load is async too), try again.
+        constexpr Milliseconds RESAVE_DELAY = 3s;
+        constexpr uint32 RESAVE_TRIES = 5;
+
+        void ResaveCalledPet(Player* player, uint32 petNumber, uint32 triesLeft = RESAVE_TRIES)
+        {
+            player->m_Events.AddEventAtOffset([player, petNumber, triesLeft]()
+                {
+                    Pet* pet = player->GetPet();
+                    if (pet && pet->getPetType() == HUNTER_PET && pet->GetCharmInfo() &&
+                        pet->GetCharmInfo()->GetPetNumber() == petNumber && !pet->isBeingLoaded())
+                    {
+                        pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+                        return;
+                    }
+
+                    // Not out yet, but still the stable's current pet: the load hasn't finished.
+                    PetStable* stable = player->GetPetStable();
+                    bool const waiting = (pet && pet->isBeingLoaded()) ||
+                        (!pet && stable && stable->CurrentPet && stable->CurrentPet->PetNumber == petNumber);
+                    if (waiting && triesLeft > 1)
+                        ResaveCalledPet(player, petNumber, triesLeft - 1);
+                }, RESAVE_DELAY);
         }
 
         // Why a pet can't be called right now, or empty.
@@ -518,7 +548,7 @@ namespace BeastCollection::Box
             Entry taken;
             if (!TakeFromCache(guid, petNumber, taken))
                 return Fail(player, "CALL", "notfound");
-            // Already marked current: see the top of this file.
+            // Already marked current, and saved again after the call: see the top of this file.
             MoveFromBox(guid, taken.info, PET_SAVE_AS_CURRENT);
             stable.UnslottedPets.push_back(taken.info);
         }
@@ -549,6 +579,7 @@ namespace BeastCollection::Box
         stmt->SetData(1, guid);
         stmt->SetData(2, petNumber);
         CharacterDatabase.Execute(stmt);
+        ResaveCalledPet(player, petNumber);
 
         StartCooldown(guid);
         Send(player, "OK:CALL:" + std::to_string(petNumber));
