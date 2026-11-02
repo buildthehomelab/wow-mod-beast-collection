@@ -58,6 +58,16 @@ function methods:SetHeight(h) self.__height = h end
 function methods:SetSize(w, h) self.__width, self.__height = w, h end
 function methods:GetName() return self.__name end
 function methods:GetFrameLevel() return self.__level end
+function methods:SetModelScale(scale) self.__scale = scale end
+function methods:SetPosition(depth, x, y) self.__x, self.__y = x, y end
+function methods:SetFacing(facing) self.__facing = facing end
+function methods:SetCreature(entry) self.__scaleAtLoad = self.__scale; self.__creature = entry end
+function methods:ClearModel() self.__creature = nil end
+local uncachedCreatures = {}
+function methods:GetModel()
+	local c = rawget(self, "__creature")
+	return c and not uncachedCreatures[c] and "x.m2" or ""
+end
 function methods:GetObjectType() return self.__kind end
 function methods:GetRegions() return end
 function methods:GetChildren() return end
@@ -164,7 +174,10 @@ function GetItemInfo(id)
 end
 function GetItemQualityColor() return 1, 1, 1, "|cffffffff" end
 function GetRealmName() return "Test Realm" end
-function GetCursorPosition() return 0, 0 end
+local cursorX, buttonsDown = 0, {}
+function GetCursorPosition() return cursorX, 0 end
+function IsMouseButtonDown(button) return buttonsDown[button] end
+function time() return math.floor(now or 0) end
 function PlaySoundFile() end
 UIErrorsFrame = { AddMessage = function (_, m) print("  [error] " .. m) end }
 NAME, LEVEL_ABBR, ZONE = "Name", "Lvl", "Zone"
@@ -558,6 +571,37 @@ step("second session uses the cached catalog", function ()
 	assert(catalogRequests == before, "catalog asked for again")
 	assert(saved.catalogs["Test Realm"].hash == "4242", "cache not keyed by realm")
 	assert(#BC.families[1].abilities == 3, "abilities not cached")
+end)
+
+step("a beast's view is remembered", function ()
+	assert(BeastCollectionDB.modelViews == ModelViewLib.views, "views aren't saved with the addon")
+	local model = BC.CreateModel(nil)
+	model:ShowCreature(9901)
+	assert(model.__scale == 1 and model.__scaleAtLoad == 1, "an untouched beast isn't at the default view")
+	model.__scripts.OnMouseWheel(model, -1)
+	local zoomed = model.__scale
+	assert(zoomed < 1, "the wheel didn't zoom out")
+	model:ShowCreature(9902)
+	assert(model.__scaleAtLoad == 1 and model.__scale == 1, "the next beast didn't load from neutral")
+	model:ShowCreature(9901)
+	assert(model.__scaleAtLoad == 1 and model.__scale == zoomed, "the view didn't come back")
+	model.__scripts.OnMouseDown(model, "MiddleButton")
+	assert(model.__scale == 1 and not ModelViewLib.views[9901], "a middle click didn't reset it")
+	-- One the client hasn't seen: no view, and no input, until it has drawn.
+	model.__scripts.OnMouseWheel(model, -1)
+	model:ShowCreature(9902)
+	uncachedCreatures[9901] = true
+	model:ShowCreature(9901)
+	assert(model.__scale == 1, "a view went onto a creature that hasn't drawn")
+	model.__scripts.OnMouseWheel(model, -1)
+	assert(model.__scale == 1, "the wheel worked on a creature that hasn't drawn")
+	tick(1)
+	assert(model.__scale == 1, "a view went on before the creature drew")
+	uncachedCreatures[9901] = nil
+	tick(1)
+	assert(model.__scale < 1, "the view didn't come once the creature drew")
+	model.__scripts.OnMouseDown(model, "MiddleButton")
+	model:Hide()
 end)
 
 step("protocol mismatch stops it", function ()

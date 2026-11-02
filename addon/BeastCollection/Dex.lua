@@ -713,7 +713,9 @@ end
 
 local function refreshDetail()
 	local look = selectedDisplay and BC.looks[selectedDisplay]
-	lookView:Hide()
+	-- Only when it goes away: hiding the model loads it again and ends a drag, and this runs on
+	-- every SEEN, MAP and FAVORITES.
+	if not look then lookView:Hide() end
 	familyView:Hide()
 	overview:Hide()
 	if look then

@@ -512,28 +512,39 @@ end
 -- a turnable 3D view of a creature
 --
 -- model:ShowCreature(entry, silhouette): the creature's model, or a black silhouette of it for
--- a beast the account hasn't tamed yet. Drag to turn it.
+-- a beast the account hasn't tamed yet. ModelView.lua lets the player turn, zoom and move it.
 
 local LIGHT = { 1, 0, 0, -0.707, -0.707, 0.7, 1.0, 1.0, 1.0, 0.8, 1.0, 1.0, 0.8 }
 local DARK = { 1, 0, 0, -0.707, -0.707, 0, 0, 0, 0, 0, 0, 0, 0 }
 
+local function drawn(model)
+	local file = model:GetModel()
+	return type(file) == "string" and file ~= ""
+end
+
+-- A creature the client hasn't seen yet only shows once its query comes back, and its view waits
+-- for that: until then the frame could still be drawing something else.
+local RETRY, MAX_TRIES = 0.7, 15
+
+local function frameIfDrawn(model, entry)
+	if not drawn(model) then return false end
+	ModelViewLib.Frame(model, entry)
+	model:SetLight(unpack(model.silhouette and DARK or LIGHT))
+	return true
+end
+
+local function waitForCreature(model, entry, tries)
+	BC.After(RETRY, function ()
+		if model.entry ~= entry or not model:IsVisible() or frameIfDrawn(model, entry) or tries <= 0 then return end
+		model:SetCreature(entry)
+		if not frameIfDrawn(model, entry) then waitForCreature(model, entry, tries - 1) end
+	end)
+end
+
 function BC.CreateModel(parent)
 	local model = CreateFrame("PlayerModel", nil, parent)
-	model.facing = 0.6
-	model:EnableMouse(true)
-	model:SetScript("OnMouseDown", function (self, button)
-		if button == "LeftButton" then
-			self.dragX = GetCursorPosition()
-		end
-	end)
-	model:SetScript("OnMouseUp", function (self) self.dragX = nil end)
-	model:SetScript("OnUpdate", function (self)
-		if not self.dragX then return end
-		local x = GetCursorPosition()
-		self.facing = self.facing + (x - self.dragX) * 0.02
-		self.dragX = x
-		self:SetFacing(self.facing)
-	end)
+	ModelViewLib.Wire(model, 0.6)
+	ModelViewLib.AddHint(model)
 	-- A hidden model can drop what it showed; show it again.
 	model:SetScript("OnShow", function (self)
 		if self.entry then
@@ -546,21 +557,20 @@ function BC.CreateModel(parent)
 	function model:ShowCreature(entry, silhouette)
 		if not entry or entry == 0 then
 			self.entry = nil
+			ModelViewLib.BeforeLoad(self)
 			self:ClearModel()
 			return
 		end
 		if self.entry ~= entry then
 			self.entry = entry
+			ModelViewLib.BeforeLoad(self)
+			self:ClearModel()
 			self:SetCreature(entry)
-			self:SetFacing(self.facing)
-			-- A creature the client hasn't seen yet only shows once its query comes back.
-			BC.After(0.7, function ()
-				if self.entry == entry and self:IsVisible() then
-					self:SetCreature(entry)
-					self:SetFacing(self.facing)
-					self:SetLight(unpack(self.silhouette and DARK or LIGHT))
-				end
-			end)
+			if drawn(self) then
+				ModelViewLib.Frame(self, entry)
+			else
+				waitForCreature(self, entry, MAX_TRIES)
+			end
 		end
 		self.silhouette = silhouette
 		self:SetLight(unpack(silhouette and DARK or LIGHT))
