@@ -628,6 +628,7 @@ events:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 events:SetScript("OnEvent", function (self, event, a1, a2, a3, a4)
 	if event == "ADDON_LOADED" and a1 == "BeastCollection" then
 		BeastCollectionDB = BeastCollectionDB or {}
+		ModelViewLib.Bind(BeastCollectionDB)
 	elseif event == "PLAYER_LOGIN" then
 		-- Let the world settle before the first whisper.
 		BC.After(4, function () BC.Send("H") end)
